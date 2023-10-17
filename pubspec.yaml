@@ -1,6 +1,6 @@
 name: spring_base
 description: a flutter widget for providing feeling in response to user interaction. it applies an animation to child widget when user interacts with it.
-version: 0.0.1
+version: 0.0.2
 homepage: https://github.com/ericyn/spring-base
 
 environment:
