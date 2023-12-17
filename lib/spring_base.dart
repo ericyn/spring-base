@@ -1,12 +1,15 @@
 library spring_base;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Adds a spring effect motion to the widget that's passed in [child]
 /// when the user taps on it.
 ///
+/// Example usage:
 /// ```dart
 /// SpringBase(
+///   hapticFeedback: true,
 ///   function: () {
 ///     print('Hello World!');
 ///   }
@@ -29,21 +32,35 @@ class SpringBase extends StatefulWidget {
   final Widget child;
 
   /// What will happen when the user taps on the [child] widget.
-  final Function function;
+  final VoidCallback? function;
 
   /// Whether the [child] widget will have a different
   /// function on long press.
   final bool longPressFunctionality;
-  final Function? longPressFunction;
+  final VoidCallback? longPressFunction;
 
-  const SpringBase(
-      {super.key,
-      this.upperBound = 0.02,
-      this.upscale = false,
-      required this.function,
-      this.longPressFunctionality = false,
-      this.longPressFunction,
-      required this.child});
+  /// The duration of the spring effect.
+  final Duration scaleDuration;
+
+  /// The curve of the spring effect.
+  final Curve curve;
+
+  /// Whether the [child] widget will have a haptic feedback.
+  final bool hapticFeedback;
+
+  const SpringBase({
+    super.key,
+    this.upperBound = 0.02,
+    this.upscale = false,
+    this.function,
+    this.longPressFunctionality = false,
+    this.longPressFunction,
+    required this.child,
+    this.scaleDuration = const Duration(milliseconds: 100),
+    this.curve = Curves.elasticOut,
+    this.hapticFeedback = false,
+  }) : assert(!longPressFunctionality || longPressFunction != null,
+            'If you want to use the long press functionality, you must provide a function for it.');
 
   @override
   State<SpringBase> createState() => _SpringBaseState();
@@ -56,7 +73,7 @@ class _SpringBaseState extends State<SpringBase>
 
   /// The [AnimationController] used to create the spring effect.
   late AnimationController _animationController;
-  late Animation<double> animation;
+  late Animation<double> _animation;
 
   @override
   void initState() {
@@ -65,23 +82,19 @@ class _SpringBaseState extends State<SpringBase>
     // Initialize the animation controller
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(
-        milliseconds: 100,
-      ),
+      duration: widget.scaleDuration,
       lowerBound: 0.0,
       upperBound: widget.upperBound,
-    )..addListener(() {
-        setState(() {});
-      });
+    );
 
     // Initialize the animation
-    animation = Tween<double>(
+    _animation = Tween<double>(
       begin: 0.0,
       end: 1.0,
     ).animate(
       CurvedAnimation(
         parent: _animationController,
-        curve: Curves.elasticOut,
+        curve: widget.curve,
       ),
     );
   }
@@ -90,6 +103,28 @@ class _SpringBaseState extends State<SpringBase>
   void dispose() {
     _animationController.dispose();
     super.dispose();
+  }
+
+  void _handleTap() {
+    if (widget.hapticFeedback) {
+      HapticFeedback.lightImpact();
+    }
+    _animationController.forward().then((_) {
+      _animationController.reverse().then((_) => widget.function);
+    });
+  }
+
+  void _handleLongPress() {
+    if (widget.hapticFeedback) {
+      HapticFeedback.mediumImpact();
+    }
+    _animationController.forward().then((_) {
+      _animationController.reverse().then((_) {
+        if (widget.longPressFunctionality) {
+          widget.longPressFunction?.call();
+        }
+      });
+    });
   }
 
   @override
@@ -103,25 +138,11 @@ class _SpringBaseState extends State<SpringBase>
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
-      onTap: () {
-        _animationController.forward();
-
-        Future.delayed(const Duration(milliseconds: 100), (() {
-          _animationController.reverse();
-        })).then((value) => {widget.function()});
-      },
-      onLongPress: () => _animationController.forward(),
-      onLongPressEnd: (details) {
-        _animationController.reverse().then((value) => {
-              widget.longPressFunctionality
-                  ? widget.longPressFunction!()
-                  : widget.function()
-            });
-      },
+      onTap: _handleTap,
+      onLongPress: widget.longPressFunctionality ? _handleLongPress : null,
       child: AnimatedBuilder(
-        animation: animation,
+        animation: _animation,
         builder: (context, child) => Transform.scale(
-          filterQuality: FilterQuality.high,
           scale: _scale,
           child: widget.child,
         ),
